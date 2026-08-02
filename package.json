@@ -1,0 +1,26 @@
+{
+  "name": "noriapp-typescript-react-rest-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Full-stack TypeScript, React and REST API starter for NoriApp.",
+  "scripts": {
+    "build": "npm run build:server && npm run build:client",
+    "build:client": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "start": "node dist/server/index.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.30",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
