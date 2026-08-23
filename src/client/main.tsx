@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import DOMPurify from 'dompurify'
-import { marked } from 'marked'
+import { marked, type Tokens } from 'marked'
 import './styles.css'
 
 type User = { id: string; username: string }
@@ -42,13 +42,14 @@ function markdownHtml(content: string, interactive: boolean): string {
   const taskLines = content.split(/\r?\n/).map((line, index) => taskLinePattern.test(line) ? index + 1 : null).filter((line): line is number => line !== null)
   let taskIndex = 0
   const renderer = new marked.Renderer()
-  renderer.listitem = (text, task, checked) => {
-    if (!task) return `<li>${text}</li>`
+  renderer.listitem = function (token: Tokens.ListItem) {
+    const text = this.parser.parseInline(token.tokens)
+    if (!token.task) return `<li>${text}</li>`
     const line = taskLines[taskIndex++] ?? 1
-    const cleanText = text.replace(/^\s*<input[^>]*>\s*/i, '')
+    const checked = token.checked === true
     const checkbox = `<span class="markdown-checkbox${checked ? ' checked' : ''}" aria-hidden="true">${checked ? '✓' : ''}</span>`
-    if (!interactive) return `<li class="task-list-item"><span class="markdown-task">${checkbox}<span>${cleanText}</span></span></li>`
-    return `<li class="task-list-item"><button type="button" class="markdown-task-button" data-task-line="${line}" data-task-checked="${checked ? 'true' : 'false'}">${checkbox}<span>${cleanText}</span></button></li>`
+    if (!interactive) return `<li class="task-list-item"><span class="markdown-task">${checkbox}<span>${text}</span></span></li>`
+    return `<li class="task-list-item"><button type="button" class="markdown-task-button" data-task-line="${line}" data-task-checked="${checked ? 'true' : 'false'}">${checkbox}<span>${text}</span></button></li>`
   }
   const html = marked.parse(content, { gfm: true, renderer })
   return DOMPurify.sanitize(html, { ADD_ATTR: ['data-task-line', 'data-task-checked'] })
@@ -178,16 +179,16 @@ function App() {
 
   return (
     <div className="shell">
-      <header className="topbar">
-        <div>
-          <div className="eyebrow">A quiet place for thoughts</div>
-          <h1>Notes<span className="brand-dot">.</span></h1>
-        </div>
-        <div className="topbar-actions">
-          <button className="primary add-button" onClick={createNote}><Icon name="add" /> <span>New note</span></button>
-          <button className="user-button" onClick={handleLogout} title="Log out"><span className="user-avatar">{session.user?.username?.slice(0, 1).toUpperCase()}</span><span className="user-name">{session.user?.username}</span></button>
-        </div>
-      </header>
+      {view.mode === 'list' ? <header className="topbar">
+          <div>
+            <div className="eyebrow">A quiet place for thoughts</div>
+            <h1>Notes<span className="brand-dot">.</span></h1>
+          </div>
+          <div className="topbar-actions">
+            <button className="primary add-button" onClick={createNote}><Icon name="add" /> <span>New note</span></button>
+            <button className="user-button" onClick={handleLogout} title="Log out"><span className="user-avatar">{session.user?.username?.slice(0, 1).toUpperCase()}</span><span className="user-name">{session.user?.username}</span></button>
+          </div>
+        </header> : null}
       {error ? <p className="error">{error}</p> : null}
       {view.mode === 'list' && <NotesGrid notes={notes} onOpen={(id) => setView({ mode: 'detail', noteId: id })} onEdit={(id) => { const note = notes.find((item) => item.id === id); if (note) setDraft({ title: note.title, content: note.content, dirty: false }); setView({ mode: 'edit', noteId: id }) }} onDelete={(id) => setModal({ type: 'delete-note', noteId: id })} />}
       {view.mode === 'detail' && currentNote ? <NoteDetail note={currentNote} onBack={() => setView({ mode: 'list', noteId: null })} onEdit={() => { setView({ mode: 'edit', noteId: currentNote.id }); setDraft({ title: currentNote.title, content: currentNote.content, dirty: false }) }} onDelete={() => setModal({ type: 'delete-note', noteId: currentNote.id })} onToggleCheckbox={toggleCheckbox} pendingCheckboxes={pendingCheckboxes} /> : null}
