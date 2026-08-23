@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 
 type UserRecord = { id: string; username: string; passwordHash: string; salt: string; createdAt: string }
+type UsersFile = { users: UserRecord[] }
 type NoteRecord = { id: string; title: string; content: string; createdAt: string; updatedAt: string }
 type UserNotesFile = { notes: NoteRecord[] }
 type SessionRecord = { userId: string; createdAt: string }
@@ -51,7 +52,7 @@ function validateNoteInput(body: NoteBody): { title: string; content: string } |
 function toggleCheckboxLine(content: string, lineNumber: number, expected: string, checked: boolean): { content: string } | null { const lines = content.split(/\r?\n/); const index = lineNumber - 1; if (!Number.isInteger(lineNumber) || index < 0 || index >= lines.length) return null; const current = lines[index]; if (current !== expected) return null; if (!/^([ \t]*[-*+]\s+)\[(?: |x|X)\]/.test(current)) return null; lines[index] = current.replace(/^([ \t]*[-*+]\s+)\[(?: |x|X)\]/, `$1[${checked ? 'x' : ' '}]`); return { content: lines.join('\n') } }
 function getCurrentSession(request: express.Request): SessionRecord | null { const sessionId = parseCookies(request.headers.cookie)[cookieName]; if (!sessionId) return null; const session = sessions[sessionId]; if (!session) return null; if (Date.now() - new Date(session.createdAt).getTime() > sessionTtlMs) return null; return session }
 function requireSession(request: express.Request, response: express.Response): SessionRecord | null { const session = getCurrentSession(request); if (!session) { jsonError(response, 401, 'Unauthorized'); return null } return session }
-async function bootstrap() { if (!bootstrapPromise) bootstrapPromise = (async () => { await ensureDataDir(); users = await readJsonFile<UserRecord[]>(usersFile, []); sessions = await readJsonFile<Record<string, SessionRecord>>(sessionsFile, {}) })(); await bootstrapPromise }
+async function bootstrap() { if (!bootstrapPromise) bootstrapPromise = (async () => { await ensureDataDir(); const storedUsers = await readJsonFile<UsersFile | UserRecord[]>(usersFile, { users: [] }); const normalizedUsers = Array.isArray(storedUsers) ? storedUsers : storedUsers.users; if (!Array.isArray(normalizedUsers)) throw new Error('Invalid users.json format'); users = normalizedUsers; sessions = await readJsonFile<Record<string, SessionRecord>>(sessionsFile, {}) })(); await bootstrapPromise }
 
 app.use(async (_request, _response, next) => { await bootstrap(); next() })
 app.get('/api/health', (_request, response) => response.json({ status: 'ok' }))
