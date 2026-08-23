@@ -161,9 +161,9 @@ function App() {
           notes={notes}
           onOpen={(id) => setView({ mode: 'detail', noteId: id })}
           onEdit={(id) => {
-            setView({ mode: 'edit', noteId: id })
             const note = notes.find((item) => item.id === id)
             if (note) setDraft({ title: note.title, content: note.content, dirty: false })
+            setView({ mode: 'edit', noteId: id })
           }}
           onDelete={(id) => setModal({ type: 'delete-note', noteId: id })}
         />
@@ -351,6 +351,7 @@ function MarkdownRenderer({
         if (task) {
           const checked = task[2].toLowerCase() === 'x'
           const key = `${noteId}:${index + 1}`
+          const label = task[3] ?? ''
           return (
             <button
               key={index}
@@ -358,7 +359,7 @@ function MarkdownRenderer({
               onClick={() => onToggleCheckbox(noteId, index + 1, line, !checked)}
             >
               <span className={`box ${checked ? 'checked' : ''}`} aria-hidden="true">{checked ? '✓' : ''}</span>
-              <span>{task[3]}</span>
+              <span>{label}</span>
             </button>
           )
         }
@@ -378,7 +379,7 @@ function NoteEditor({
 }: {
   note: Note
   draft: EditorDraft
-  setDraft: (draft: EditorDraft) => void
+  setDraft: React.Dispatch<React.SetStateAction<EditorDraft | null>>
   onBack: () => void
   onSave: (noteId: string, title: string, content: string) => Promise<void>
   onDiscard: () => void
