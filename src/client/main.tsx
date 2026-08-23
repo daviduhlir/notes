@@ -349,9 +349,9 @@ function MarkdownRenderer({
       {lines.map((line, index) => {
         const task = line.match(/^([ \t]*[-*+]\s+)\[( |x|X)\]\s+(.*)$/)
         if (task) {
-          const checked = task[2].toLowerCase() === 'x'
+          const checked = task[2]?.toLowerCase() === 'x'
           const key = `${noteId}:${index + 1}`
-          const label = task[3] ?? ''
+          const label = task?.[3] ?? ''
           return (
             <button
               key={index}
