@@ -450,9 +450,11 @@ function ConfirmDialog({
 function applyCheckboxChange(content: string, lineNumber: number, checked: boolean): string {
   const lines = content.split(/\r?\n/)
   const index = lineNumber - 1
-  if (lines[index]) {
-    lines[index] = lines[index].replace(/^([ \t]*[-*+]\s+)\[( |x|X)\]/, `$1[${checked ? 'x' : ' '}]`)
+  const currentLine = lines[index]
+  if (currentLine === undefined) {
+    return content
   }
+  lines[index] = currentLine.replace(/^([ \t]*[-*+]\s+)\[( |x|X)\]/, `$1[${checked ? 'x' : ' '}]`)
   return lines.join('\n')
 }
 
