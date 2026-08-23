@@ -1,5 +1,7 @@
 import { StrictMode, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import DOMPurify from 'dompurify'
+import { marked } from 'marked'
 import './styles.css'
 
 type User = { id: string; username: string }
@@ -11,6 +13,46 @@ type ModalState = { type: 'none' } | { type: 'delete-note'; noteId: string } | {
 type EditorDraft = { title: string; content: string; dirty: boolean }
 
 type ApiError = Error & { status?: number }
+
+const taskLinePattern = /^([ \t]*)([-*+])[ \t]+\[( |x|X)\][ \t]+(.*)$/
+
+function Icon({ name }: { name: 'add' | 'edit' | 'delete' | 'back' | 'checklist' | 'close' }) {
+  const paths = {
+    add: <><path d="M12 5v14M5 12h14" /></>,
+    edit: <><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3Z" /><path d="m14.5 7.5 2 2" /></>,
+    delete: <><path d="M4 7h16M10 11v5M14 11v5" /><path d="m6 7 1 13h10l1-13M9 7V4h6v3" /></>,
+    back: <><path d="m15 18-6-6 6-6" /><path d="M9 12h10" /></>,
+    checklist: <><rect x="4" y="5" width="5" height="5" rx="1" /><path d="m5.5 7.5 1 1 1.5-2M12 7.5h8M12 16.5h8" /><path d="M4 14h5v5H4z" /></>,
+    close: <><path d="m6 6 12 12M18 6 6 18" /></>,
+  }
+  return <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>
+}
+
+function IconButton({ label, icon, onClick, tone = 'quiet' }: { label: string; icon: 'add' | 'edit' | 'delete' | 'back' | 'checklist' | 'close'; onClick: () => void; tone?: 'quiet' | 'danger' }) {
+  return <button className={`icon-button ${tone}`} type="button" aria-label={label} title={label} onClick={(event) => { event.stopPropagation(); onClick() }}><Icon name={icon} /></button>
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(date)
+}
+
+function markdownHtml(content: string, interactive: boolean): string {
+  const taskLines = content.split(/\r?\n/).map((line, index) => taskLinePattern.test(line) ? index + 1 : null).filter((line): line is number => line !== null)
+  let taskIndex = 0
+  const renderer = new marked.Renderer()
+  renderer.listitem = (text, task, checked) => {
+    if (!task) return `<li>${text}</li>`
+    const line = taskLines[taskIndex++] ?? 1
+    const cleanText = text.replace(/^\s*<input[^>]*>\s*/i, '')
+    const checkbox = `<span class="markdown-checkbox${checked ? ' checked' : ''}" aria-hidden="true">${checked ? '✓' : ''}</span>`
+    if (!interactive) return `<li class="task-list-item"><span class="markdown-task">${checkbox}<span>${cleanText}</span></span></li>`
+    return `<li class="task-list-item"><button type="button" class="markdown-task-button" data-task-line="${line}" data-task-checked="${checked ? 'true' : 'false'}">${checkbox}<span>${cleanText}</span></button></li>`
+  }
+  const html = marked.parse(content, { gfm: true, renderer })
+  return DOMPurify.sanitize(html, { ADD_ATTR: ['data-task-line', 'data-task-checked'] })
+}
 
 const api = {
   async request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -138,12 +180,12 @@ function App() {
     <div className="shell">
       <header className="topbar">
         <div>
-          <div className="eyebrow">Personal notes</div>
-          <h1>Notes</h1>
+          <div className="eyebrow">A quiet place for thoughts</div>
+          <h1>Notes<span className="brand-dot">.</span></h1>
         </div>
         <div className="topbar-actions">
-          <button className="primary" onClick={createNote}>New note</button>
-          <button className="ghost" onClick={handleLogout}>Logout</button>
+          <button className="primary add-button" onClick={createNote}><Icon name="add" /> <span>New note</span></button>
+          <button className="user-button" onClick={handleLogout} title="Log out"><span className="user-avatar">{session.user?.username?.slice(0, 1).toUpperCase()}</span><span className="user-name">{session.user?.username}</span></button>
         </div>
       </header>
       {error ? <p className="error">{error}</p> : null}
@@ -164,23 +206,79 @@ function AuthScreen({ onAuth }: { onAuth: (mode: 'login' | 'register', username:
 }
 
 function NotesGrid({ notes, onOpen, onEdit, onDelete }: { notes: Note[]; onOpen: (id: string) => void; onEdit: (id: string) => void; onDelete: (id: string) => void }) {
-  if (!notes.length) return <p className="empty">No notes yet. Create your first one.</p>
-  return <section className="notes-grid">{notes.map((note) => <article key={note.id} className="note-card" onClick={() => onOpen(note.id)}><h2>{note.title}</h2><p>{note.content.slice(0, 160) || 'Empty note'}</p><div className="card-actions"><button onClick={(event) => { event.stopPropagation(); onEdit(note.id) }}>Edit</button><button onClick={(event) => { event.stopPropagation(); onDelete(note.id) }}>Delete</button></div></article>)}</section>
+  if (!notes.length) return <section className="empty-state"><div className="empty-mark"><Icon name="checklist" /></div><h2>Your notes start here</h2><p>Capture an idea, make a list, or clear your head.</p></section>
+  return <section className="notes-grid">{notes.map((note) => <article key={note.id} className="note-card" onClick={() => onOpen(note.id)}><div className="card-topline"><h2>{note.title || 'Untitled note'}</h2><span className="card-date">{formatDate(note.updatedAt)}</span></div><MarkdownContent content={note.content || 'Empty note'} compact /><div className="card-actions"><IconButton label="Edit note" icon="edit" onClick={() => onEdit(note.id)} /><IconButton label="Delete note" icon="delete" tone="danger" onClick={() => onDelete(note.id)} /></div></article>)}</section>
 }
 
 function NoteDetail({ note, onBack, onEdit, onDelete, onToggleCheckbox, pendingCheckboxes }: { note: Note; onBack: () => void; onEdit: () => void; onDelete: () => void; onToggleCheckbox: (noteId: string, line: number, expected: string, checked: boolean) => Promise<void>; pendingCheckboxes: Record<string, boolean> }) {
-  const lines = note.content.split(/\r?\n/)
-  return <section className="detail"><button className="ghost back-button" onClick={onBack}>Back</button><div className="detail-head"><h2>{note.title}</h2><div className="topbar-actions"><button className="ghost" onClick={onEdit}>Edit</button><button className="ghost" onClick={onDelete}>Delete</button></div></div><MarkdownRenderer lines={lines} noteId={note.id} onToggleCheckbox={onToggleCheckbox} pendingCheckboxes={pendingCheckboxes} /></section>
+  return <section className="detail"><div className="detail-toolbar"><button className="back-link" onClick={onBack}><Icon name="back" /> Notes</button><div className="detail-actions"><IconButton label="Edit note" icon="edit" onClick={onEdit} /><IconButton label="Delete note" icon="delete" tone="danger" onClick={onDelete} /></div></div><div className="document"><h2>{note.title || 'Untitled note'}</h2><MarkdownContent content={note.content} interactive noteId={note.id} onToggleCheckbox={onToggleCheckbox} pendingCheckboxes={pendingCheckboxes} /></div></section>
 }
 
-function MarkdownRenderer({ lines, noteId, onToggleCheckbox, pendingCheckboxes }: { lines: string[]; noteId: string; onToggleCheckbox: (noteId: string, line: number, expected: string, checked: boolean) => Promise<void>; pendingCheckboxes: Record<string, boolean> }) {
-  return <div className="markdown">{lines.map((line, index) => { const task = line.match(/^([ \t]*[-*+]\s+)\[( |x|X)\]\s+(.*)$/); if (task) { const checked = task[2].toLowerCase() === 'x'; const key = `${noteId}:${index + 1}`; const label = task[3] ?? ''; return <button key={index} className={`task ${pendingCheckboxes[key] !== undefined ? 'pending' : ''}`} onClick={() => onToggleCheckbox(noteId, index + 1, line, !checked)}><span className={`box ${checked ? 'checked' : ''}`} aria-hidden="true">{checked ? '✓' : ''}</span><span>{label}</span></button> } return <p key={index}>{line || '\u00A0'}</p> })}</div>
+function MarkdownContent({ content, compact = false, interactive = false, noteId, onToggleCheckbox, pendingCheckboxes }: { content: string; compact?: boolean; interactive?: boolean; noteId?: string; onToggleCheckbox?: (noteId: string, line: number, expected: string, checked: boolean) => Promise<void>; pendingCheckboxes?: Record<string, boolean> }) {
+  const html = useMemo(() => markdownHtml(content, interactive), [content, interactive])
+  function handleClick(event: React.MouseEvent<HTMLDivElement>) {
+    if (!interactive || !noteId || !onToggleCheckbox || !pendingCheckboxes) return
+    if (!(event.target instanceof HTMLElement)) return
+    const button = event.target.closest('[data-task-line]')
+    if (!button) return
+    const line = Number(button.getAttribute('data-task-line'))
+    const checked = button.getAttribute('data-task-checked') === 'true'
+    const lines = content.split(/\r?\n/)
+    const expected = lines[line - 1]
+    const key = `${noteId}:${line}`
+    if (!expected || pendingCheckboxes[key] !== undefined) return
+    void onToggleCheckbox(noteId, line, expected, !checked)
+  }
+  return <div className={`markdown${compact ? ' markdown-compact' : ''}`} dangerouslySetInnerHTML={{ __html: html }} onClick={handleClick} />
 }
 
 function NoteEditor({ note, draft, setDraft, onBack, onSave, onDiscard }: { note: Note; draft: EditorDraft; setDraft: React.Dispatch<React.SetStateAction<EditorDraft | null>>; onBack: () => void; onSave: (noteId: string, title: string, content: string) => Promise<void>; onDiscard: () => void }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   useEffect(() => { textareaRef.current?.focus() }, [])
-  return <section className="editor"><div className="detail-head"><button className="ghost" onClick={onBack}>Back</button><input aria-label="Title" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value, dirty: true })} placeholder="Title" /></div><textarea ref={textareaRef} aria-label="Content" value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value, dirty: true })} placeholder="Write in Markdown…" /><div className="editor-bar"><button className="primary" onClick={() => onSave(note.id, draft.title, draft.content)} disabled={!draft.dirty}>Save</button><button className="ghost" onClick={onDiscard}>Discard</button></div></section>
+  function convertSelectionToChecklist() {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const lineStart = draft.content.lastIndexOf('\n', Math.max(0, start - 1)) + 1
+    const lineEnd = draft.content.indexOf('\n', end) === -1 ? draft.content.length : draft.content.indexOf('\n', end)
+    const selected = draft.content.slice(lineStart, lineEnd)
+    const converted = selected.split('\n').map((line) => {
+      if (!line.trim() || taskLinePattern.test(line)) return line
+      const indent = line.match(/^[ \t]*/)?.[0] ?? ''
+      return `${indent}- [ ] ${line.slice(indent.length)}`
+    }).join('\n')
+    const nextContent = `${draft.content.slice(0, lineStart)}${converted}${draft.content.slice(lineEnd)}`
+    setDraft({ ...draft, content: nextContent, dirty: true })
+    requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(lineStart, lineStart + converted.length)
+    })
+  }
+
+  function handleEditorKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.shiftKey || event.altKey || textareaRef.current?.selectionStart !== textareaRef.current?.selectionEnd) return
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const cursor = textarea.selectionStart
+    const lineStart = draft.content.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1
+    const lineEnd = draft.content.indexOf('\n', cursor) === -1 ? draft.content.length : draft.content.indexOf('\n', cursor)
+    const line = draft.content.slice(lineStart, lineEnd)
+    const task = line.match(taskLinePattern)
+    if (!task) return
+    event.preventDefault()
+    const hasText = task[4].trim().length > 0
+    const insertion = hasText ? `\n${task[1]}${task[2]} [ ] ` : '\n'
+    const nextContent = `${draft.content.slice(0, cursor)}${insertion}${draft.content.slice(cursor)}`
+    setDraft({ ...draft, content: nextContent, dirty: true })
+    requestAnimationFrame(() => {
+      textarea.focus()
+      const nextCursor = cursor + insertion.length
+      textarea.setSelectionRange(nextCursor, nextCursor)
+    })
+  }
+
+  return <section className="editor"><div className="editor-toolbar"><button className="back-link" onClick={onBack}><Icon name="back" /> Notes</button><button className="toolbar-button" type="button" onMouseDown={(event) => { event.preventDefault(); convertSelectionToChecklist() }} title="Convert selected lines to checklist"><Icon name="checklist" /><span>Checklist</span></button></div><input className="editor-title" aria-label="Title" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value, dirty: true })} placeholder="Title" /><textarea ref={textareaRef} aria-label="Content" value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value, dirty: true })} onKeyDown={handleEditorKeyDown} placeholder="Write in Markdown…" /><div className="editor-bar"><button className="primary" onClick={() => onSave(note.id, draft.title, draft.content)} disabled={!draft.dirty}>Save note</button><button className="ghost" onClick={onDiscard}>Discard</button></div></section>
 }
 
 function ConfirmDialog({ title, description, confirmLabel, tone, onCancel, onConfirm }: { title: string; description: string; confirmLabel: string; tone: 'danger' | 'neutral'; onCancel: () => void; onConfirm: () => void }) {
