@@ -236,24 +236,36 @@ function MarkdownContent({ content, compact = false, interactive = false, noteId
 function NoteEditor({ note, draft, setDraft, onBack, onSave, onDiscard }: { note: Note; draft: EditorDraft; setDraft: React.Dispatch<React.SetStateAction<EditorDraft | null>>; onBack: () => void; onSave: (noteId: string, title: string, content: string) => Promise<void>; onDiscard: () => void }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   useEffect(() => { textareaRef.current?.focus() }, [])
-  function convertSelectionToChecklist() {
+  function convertLinesToChecklist() {
     const textarea = textareaRef.current
     if (!textarea) return
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const lineStart = draft.content.lastIndexOf('\n', Math.max(0, start - 1)) + 1
-    const lineEnd = draft.content.indexOf('\n', end) === -1 ? draft.content.length : draft.content.indexOf('\n', end)
-    const selected = draft.content.slice(lineStart, lineEnd)
-    const converted = selected.split('\n').map((line) => {
+    const converted = draft.content.split('\n').map((line) => {
       if (!line.trim() || taskLinePattern.test(line)) return line
       const indent = line.match(/^[ \t]*/)?.[0] ?? ''
       return `${indent}- [ ] ${line.slice(indent.length)}`
     }).join('\n')
-    const nextContent = `${draft.content.slice(0, lineStart)}${converted}${draft.content.slice(lineEnd)}`
+    setDraft({ ...draft, content: converted, dirty: true })
+    requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(0, converted.length)
+    })
+  }
+
+  function addCodeBlock() {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const cursor = textarea.selectionStart
+    const before = draft.content.slice(0, cursor)
+    const after = draft.content.slice(cursor)
+    const prefix = before && !before.endsWith('\n') ? '\n' : ''
+    const suffix = after && !after.startsWith('\n') ? '\n' : ''
+    const block = '```\n\n```'
+    const nextContent = `${before}${prefix}${block}${suffix}${after}`
+    const blockContentStart = before.length + prefix.length + 4
     setDraft({ ...draft, content: nextContent, dirty: true })
     requestAnimationFrame(() => {
       textarea.focus()
-      textarea.setSelectionRange(lineStart, lineStart + converted.length)
+      textarea.setSelectionRange(blockContentStart, blockContentStart)
     })
   }
 
@@ -279,7 +291,7 @@ function NoteEditor({ note, draft, setDraft, onBack, onSave, onDiscard }: { note
     })
   }
 
-  return <section className="editor"><div className="editor-toolbar"><button className="back-link" onClick={onBack}><Icon name="back" /> Notes</button><button className="toolbar-button" type="button" onMouseDown={(event) => { event.preventDefault(); convertSelectionToChecklist() }} title="Convert selected lines to checklist"><Icon name="checklist" /><span>Checklist</span></button></div><input className="editor-title" aria-label="Title" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value, dirty: true })} placeholder="Title" /><textarea ref={textareaRef} aria-label="Content" value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value, dirty: true })} onKeyDown={handleEditorKeyDown} placeholder="Write in Markdown…" /><div className="editor-bar"><button className="primary" onClick={() => onSave(note.id, draft.title, draft.content)} disabled={!draft.dirty}>Save note</button><button className="ghost" onClick={onDiscard}>Discard</button></div></section>
+  return <section className="editor"><div className="editor-toolbar"><button className="back-link" onClick={onBack}><Icon name="back" /> Notes</button><div className="editor-toolbar-actions"><button className="toolbar-button" type="button" onMouseDown={(event) => { event.preventDefault(); convertLinesToChecklist() }} title="Convert all lines to a checklist"><Icon name="checklist" /><span>Checklist</span></button><button className="toolbar-button" type="button" onMouseDown={(event) => { event.preventDefault(); addCodeBlock() }} title="Add code block"><Icon name="add" /><span>Add block</span></button></div></div><input className="editor-title" aria-label="Title" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value, dirty: true })} placeholder="Title" /><textarea ref={textareaRef} aria-label="Content" value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value, dirty: true })} onKeyDown={handleEditorKeyDown} placeholder="Write in Markdown…" /><div className="editor-bar"><button className="primary" onClick={() => onSave(note.id, draft.title, draft.content)} disabled={!draft.dirty}>Save note</button><button className="ghost" onClick={onDiscard}>Discard</button></div></section>
 }
 
 function ConfirmDialog({ title, description, confirmLabel, tone, onCancel, onConfirm }: { title: string; description: string; confirmLabel: string; tone: 'danger' | 'neutral'; onCancel: () => void; onConfirm: () => void }) {
