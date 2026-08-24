@@ -14,7 +14,7 @@ type CheckboxPatchBody = { line?: number; expected?: string; checked?: boolean }
 
 const app = express()
 const port = Number(process.env.PORT || 3000)
-const dataDir = '/data'
+const dataDir = process.env.DATA_DIR || '/data'
 const usersFile = path.join(dataDir, 'users.json')
 const usersNotesDir = path.join(dataDir, 'users')
 const sessionsFile = path.join(dataDir, 'sessions.json')
