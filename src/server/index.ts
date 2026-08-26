@@ -68,4 +68,10 @@ app.delete('/api/notes/:id', async (request, response) => { const session = requ
 app.patch('/api/notes/:id/checkbox', async (request, response) => { const session = requireSession(request, response); if (!session) return; const body = request.body as CheckboxPatchBody; const line = typeof body.line === 'number' ? body.line : NaN; const expected = body.expected; const checked = body.checked; if (!Number.isInteger(line) || line < 1 || typeof expected !== 'string' || typeof checked !== 'boolean') return jsonError(response, 400, 'Invalid checkbox update'); const notesFile = await loadUserNotes(session.userId); const index = notesFile.notes.findIndex((candidate) => candidate.id === request.params.id); if (index === -1) return jsonError(response, 404, 'Note not found'); const current = notesFile.notes[index]; const result = toggleCheckboxLine(current.content, line, expected, checked); if (!result) return jsonError(response, 409, 'Conflict'); const updated = { ...current, content: result.content, updatedAt: new Date().toISOString() }; notesFile.notes[index] = updated; await saveUserNotes(session.userId, notesFile); response.json({ note: updated }) })
 app.use(express.static(clientPath))
 app.get('/{*splat}', (_request, response) => { response.sendFile(path.join(clientPath, 'index.html')) })
-bootstrap().then(() => { app.listen(port, '0.0.0.0', () => console.log(`Application listening on port ${port}`)) }).catch((error) => { console.error(error); process.exit(1) })
+
+app.locals.bootstrapReady = bootstrap()
+if (process.env.NODE_ENV !== 'test') {
+  app.locals.bootstrapReady.then(() => { app.listen(port, '0.0.0.0', () => console.log(`Application listening on port ${port}`)) }).catch((error: unknown) => { console.error(error); process.exit(1) })
+}
+
+export { app }

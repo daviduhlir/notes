@@ -1,7 +1,7 @@
 {
   "installCommand": ["npm", "install"],
   "buildCommand": ["npm", "run", "build"],
-  "testCommand": null,
+  "testCommand": ["npm", "test"],
   "startCommand": ["npm", "start"],
   "port": 3000
 }
